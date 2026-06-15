@@ -26,19 +26,50 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null);
   const [error, setError] = useState(null);
   const pollRef = useRef(null);
+  // Optimistic check-ins not yet confirmed by the server. Netlify Blobs is
+  // eventually consistent, so a poll right after a save can return stale data;
+  // we overlay these onto every server fetch until the server reflects them,
+  // which prevents the background poll from "un-checking" a fresh edit.
+  const pendingRef = useRef({});
   const isMobile = useIsMobile();
+
+  const applyPending = useCallback((data) => {
+    if (!data) return data;
+    const pend = pendingRef.current;
+    const keys = Object.keys(pend);
+    if (keys.length === 0) return data;
+    const checkins = { ...(data.checkins || {}) };
+    for (const key of keys) {
+      const [date, uid, habitId] = key.split('|');
+      const want = pend[key];
+      const server = data.checkins?.[date]?.[uid]?.[habitId];
+      // Drop from pending once the server agrees with our optimistic value.
+      if (server && server.done === want.done && server.value === want.value) {
+        delete pend[key];
+        continue;
+      }
+      checkins[date] = { ...(checkins[date] || {}) };
+      checkins[date][uid] = { ...(checkins[date][uid] || {}) };
+      checkins[date][uid][habitId] = {
+        done: want.done,
+        ...(want.value !== undefined ? { value: want.value } : {}),
+      };
+    }
+    return { ...data, checkins };
+  }, []);
 
   const loadData = useCallback(async (silent = false) => {
     try {
       const data = await getData();
-      setAppData(data);
+      const merged = applyPending(data);
+      setAppData(merged);
       setLastSync(Date.now());
-      return data;
+      return merged;
     } catch (err) {
       if (!silent) setError('Failed to load data. Please refresh.');
       return null;
     }
-  }, []);
+  }, [applyPending]);
 
   const determineState = useCallback((data, uid) => {
     if (!data || !data.config) {
@@ -99,9 +130,7 @@ export default function App() {
   useEffect(() => {
     if (state === 'app') {
       pollRef.current = setInterval(() => {
-        loadData(true).then(data => {
-          if (data) setAppData(data);
-        });
+        loadData(true);
       }, 30000);
     }
     return () => {
@@ -134,10 +163,13 @@ export default function App() {
   const mutate = useCallback(async (optimisticData, habitId, done, value, date) => {
     setAppData(optimisticData);
     const target = date || todayStr();
+    // Record the intent so the next poll can't revert it before the server
+    // catches up (cleared by applyPending once the server confirms it).
+    pendingRef.current[`${target}|${userId}|${habitId}`] = { done, value };
     try {
       await saveCheckin(userId, target, habitId, done, value);
     } catch (err) {
-      // silently fail, data will sync on next poll
+      // keep the optimistic value; it stays overlaid until a save succeeds
     }
   }, [userId]);
 
@@ -145,19 +177,28 @@ export default function App() {
     setState('restart');
   }, []);
 
-  const handleRestartComplete = useCallback(async () => {
-    const data = await loadData();
-    const newDay = data?.config ? getDayNum(data.config.startDate) : 1;
+  const handleRestartComplete = useCallback(async (configObj) => {
+    // Any optimistic edits from the previous challenge are now irrelevant.
+    pendingRef.current = {};
+    // Use the just-written config (merged with preserved users) directly, rather
+    // than an immediate re-read that the eventually-consistent store may not yet
+    // reflect.
+    const newConfig = configObj ? { ...appData?.config, ...configObj } : appData?.config;
+    const data = { config: newConfig, checkins: {} };
+    setAppData(data);
+    const newDay = newConfig ? getDayNum(newConfig.startDate) : 1;
     // Mark the new Day 1 as already "revealed" for everyone on this device, so
     // the carried-over habits don't trigger a one-habit reveal ceremony — but
     // habits unlocking on later days still animate as normal.
-    if (data?.config?.users) {
-      for (const uid of Object.keys(data.config.users)) {
+    if (newConfig?.users) {
+      for (const uid of Object.keys(newConfig.users)) {
         localStorage.setItem(`habit-revealed-${uid}`, String(newDay));
       }
     }
     determineState(data, userId);
-  }, [loadData, determineState, userId]);
+    // Reconcile with the server once it has caught up.
+    loadData(true);
+  }, [appData, loadData, determineState, userId]);
 
   const refreshData = useCallback(async () => {
     const data = await loadData();

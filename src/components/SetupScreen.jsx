@@ -82,30 +82,29 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
         target: h.type === 'num' ? Number(h.target) : null,
         unit: h.type === 'num' ? h.unit : '',
       }));
+      const configObj = {
+        startDate,
+        rampDays: Number(rampDays),
+        practiceDays: Number(practiceDays),
+        habits: habitPayload,
+      };
       if (isRestart) {
-        await reconfigureChallenge({
-          config: {
-            startDate,
-            rampDays: Number(rampDays),
-            practiceDays: Number(practiceDays),
-            habits: habitPayload,
-          },
-        });
+        await reconfigureChallenge({ config: configObj });
+        // Hand the exact written config back so the app doesn't have to rely on
+        // an immediate (eventually-consistent) re-read of the store.
+        onComplete(configObj);
       } else {
         await setupChallenge({
           config: {
-            startDate,
-            rampDays: Number(rampDays),
-            practiceDays: Number(practiceDays),
+            ...configObj,
             users: {
               prasidh: { name: 'Prasidh', initial: 'P', pin: prasPin },
               anisha:  { name: 'Anisha',  initial: 'A', pin: aniPin  },
             },
-            habits: habitPayload,
           },
         });
+        onComplete();
       }
-      onComplete();
     } catch (e) {
       setErr(e.message || 'Something went wrong. Try again.');
     } finally {

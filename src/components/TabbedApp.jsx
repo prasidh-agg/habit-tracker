@@ -46,6 +46,21 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onResta
     );
   }
 
+  // Restart / logout controls, shown in the corner of the pre-start and
+  // completed screens (which don't render the main header/menu).
+  const cornerBtn = {
+    background: 'none', border: `1px solid ${inkFaint}`,
+    borderRadius: 4, cursor: 'pointer',
+    fontFamily: handFont, fontSize: 13, color: inkSoft,
+    padding: '4px 10px',
+  };
+  const cornerControls = (
+    <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 8, zIndex: 5 }}>
+      <button onClick={onRestart} style={cornerBtn} title="Wipe check-ins and restart the challenge">restart</button>
+      <button onClick={onLogout} style={cornerBtn}>logout</button>
+    </div>
+  );
+
   // Day clamping checks
   if (dayNum < 1) {
     const daysUntil = Math.abs(dayNum) + 1;
@@ -53,8 +68,9 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onResta
       <div style={{
         width: '100%', height: '100%', background: bg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: 12, padding: 32,
+        flexDirection: 'column', gap: 12, padding: 32, position: 'relative',
       }}>
+        {cornerControls}
         <div style={{ fontFamily: titleFont, fontSize: 48, color: ink }}>30·days</div>
         <div style={{ fontFamily: handFont, fontSize: 20, color: inkSoft }}>
           Challenge starts in {daysUntil} day{daysUntil !== 1 ? 's' : ''}!
@@ -71,8 +87,9 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onResta
       <div style={{
         width: '100%', height: '100%', background: bg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexDirection: 'column', gap: 12, padding: 32, textAlign: 'center',
+        flexDirection: 'column', gap: 12, padding: 32, textAlign: 'center', position: 'relative',
       }}>
+        {cornerControls}
         <div style={{ fontFamily: titleFont, fontSize: 52, color: accent }}>Challenge Complete!</div>
         <div style={{ fontFamily: handFont, fontSize: 20, color: ink }}>
           You did it — 30 days of building habits together.
