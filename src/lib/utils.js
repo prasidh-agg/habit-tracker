@@ -1,13 +1,27 @@
-export function getDayNum(startDate) {
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.floor((now - start) / 86400000) + 1;
+// Parse a 'YYYY-MM-DD' string as a date at LOCAL midnight.
+// (new Date('2026-06-15') parses as UTC midnight, which shifts the day in
+// negative-offset timezones — the root of the disappearing-checkmark bug.)
+export function parseLocalDate(dateStr) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
+export function getDayNum(startDate) {
+  const start = parseLocalDate(startDate);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  // Math.round (not floor) keeps this correct across DST transitions, where
+  // the millisecond gap between two local midnights isn't an exact day.
+  return Math.round((now - start) / 86400000) + 1;
+}
+
+// Format a Date as 'YYYY-MM-DD' using LOCAL components (not UTC), so the
+// check-in key always matches the calendar day the user actually sees.
 export function formatDate(d) {
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function todayStr() {
@@ -15,7 +29,7 @@ export function todayStr() {
 }
 
 export function addDays(dateStr, n) {
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   d.setDate(d.getDate() + n);
   return d;
 }
