@@ -96,6 +96,27 @@ export default async function handler(req, context) {
       return Response.json({ success: true }, { headers });
     }
 
+    if (action === 'edit-config') {
+      // Adjust the habit schedule (names, reveal days, dates) while KEEPING all
+      // existing check-ins and users.
+      if (!current.config) {
+        return Response.json({ error: 'Nothing to edit' }, { status: 400, headers });
+      }
+      const { config } = body.payload;
+      const newData = {
+        config: {
+          ...current.config,
+          ...(config.habits ? { habits: config.habits } : {}),
+          ...(config.startDate ? { startDate: config.startDate } : {}),
+          ...(config.rampDays ? { rampDays: config.rampDays } : {}),
+          ...(config.practiceDays ? { practiceDays: config.practiceDays } : {}),
+        },
+        checkins: current.checkins || {},
+      };
+      await store.set(KEY, JSON.stringify(newData));
+      return Response.json({ success: true }, { headers });
+    }
+
     if (action === 'reset') {
       // Dev-only reset
       await store.set(KEY, JSON.stringify({ config: null, checkins: {} }));

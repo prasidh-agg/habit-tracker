@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { setupChallenge, reconfigureChallenge } from '../lib/api.js';
+import { setupChallenge, reconfigureChallenge, editConfig } from '../lib/api.js';
 import { bg, paper, paperShade, ink, inkSoft, inkFaint, accent, accentSoft, handFont, titleFont, monoFont } from '../constants.js';
 import { SketchBox, Paper, Caption } from './primitives.jsx';
 import { todayStr } from '../lib/utils.js';
@@ -37,14 +37,30 @@ function restartHabits(config, currentDay) {
   }));
 }
 
+// Edit pre-fill: the existing habits exactly as stored (reveal days untouched).
+function editHabits(config) {
+  return (config?.habits || []).map(h => ({
+    id: h.id,
+    revealDay: h.revealDay || 1,
+    name: h.name || '',
+    type: h.type || 'check',
+    target: h.target ?? null,
+    unit: h.unit || '',
+  }));
+}
+
 export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'setup', initialConfig = null, currentDay = 1 }) {
   const isRestart = mode === 'restart';
+  const isEdit = mode === 'edit';
+  const isSchedule = isRestart || isEdit; // schedule-only modes: no PIN entry, editable reveal day
   const [habits, setHabits] = useState(() =>
-    isRestart ? restartHabits(initialConfig, currentDay) : DEFAULT_HABITS.map(h => ({ ...h }))
+    isRestart ? restartHabits(initialConfig, currentDay)
+    : isEdit ? editHabits(initialConfig)
+    : DEFAULT_HABITS.map(h => ({ ...h }))
   );
-  const [startDate, setStartDate] = useState(todayStr());
-  const [rampDays, setRampDays] = useState(isRestart ? (initialConfig?.rampDays || 15) : 15);
-  const [practiceDays, setPracticeDays] = useState(isRestart ? (initialConfig?.practiceDays || 15) : 15);
+  const [startDate, setStartDate] = useState(isEdit ? (initialConfig?.startDate || todayStr()) : todayStr());
+  const [rampDays, setRampDays] = useState(isSchedule ? (initialConfig?.rampDays || 15) : 15);
+  const [practiceDays, setPracticeDays] = useState(isSchedule ? (initialConfig?.practiceDays || 15) : 15);
   const [prasPin, setPrasPin] = useState('');
   const [aniPin, setAniPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -64,7 +80,7 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
 
   const handleSubmit = async () => {
     if (!startDate) { setErr('Please set a start date.'); return; }
-    if (!isRestart) {
+    if (!isSchedule) {
       if (prasPin.length !== 4 || !/^\d{4}$/.test(prasPin)) { setErr("Prasidh's PIN must be 4 digits."); return; }
       if (aniPin.length !== 4 || !/^\d{4}$/.test(aniPin)) { setErr("Anisha's PIN must be 4 digits."); return; }
     }
@@ -88,7 +104,10 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
         practiceDays: Number(practiceDays),
         habits: habitPayload,
       };
-      if (isRestart) {
+      if (isEdit) {
+        await editConfig({ config: configObj });
+        onComplete(configObj);
+      } else if (isRestart) {
         await reconfigureChallenge({ config: configObj });
         // Hand the exact written config back so the app doesn't have to rely on
         // an immediate (eventually-consistent) re-read of the store.
@@ -141,10 +160,12 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
         {/* Title */}
         <div style={{ marginBottom: 32, textAlign: isMobile ? 'center' : 'left' }}>
           <div style={{ fontFamily: titleFont, fontSize: isMobile ? 52 : 64, color: ink, lineHeight: 1, marginBottom: 4 }}>
-            {isRestart ? 'Restart' : 'The 15'}
+            {isEdit ? 'Edit habits' : isRestart ? 'Restart' : 'The 15'}
           </div>
           <div style={{ fontFamily: handFont, fontSize: 16, color: inkSoft }}>
-            {isRestart
+            {isEdit
+              ? 'Adjust names, reveal days and dates — your check-ins are kept'
+              : isRestart
               ? 'Wipe check-ins and restart the challenge from today'
               : 'Set up your 30-day challenge together'}
           </div>
@@ -153,7 +174,7 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
         {/* Habits table */}
         <SketchBox style={{ marginBottom: 32 }}>
           <Caption style={{ marginBottom: 12 }}>
-            {isRestart ? 'Habits & reveal day (Day = day it unlocks; 1 = today)' : 'Your 15 habits (one unlocks each day)'}
+            {isSchedule ? 'Habits & reveal day (Day = day it unlocks; 1 = first day)' : 'Your 15 habits (one unlocks each day)'}
           </Caption>
 
           {/* Header */}
@@ -184,8 +205,8 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
               padding: '6px 0',
               borderBottom: i < habits.length - 1 ? `1px solid ${inkFaint}` : 'none',
             }}>
-              {/* Day number — editable reveal day in restart mode */}
-              {isRestart ? (
+              {/* Day number — editable reveal day in schedule modes */}
+              {isSchedule ? (
                 <input
                   type="number"
                   min={1}
@@ -295,7 +316,7 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
         {/* Config */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isMobile || isRestart ? '1fr' : '1fr 1fr',
+          gridTemplateColumns: isMobile || isSchedule ? '1fr' : '1fr 1fr',
           gap: 16,
           marginBottom: 32,
         }}>
@@ -334,7 +355,7 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
             </div>
           </SketchBox>
 
-          {!isRestart && (
+          {!isSchedule && (
           <SketchBox>
             <Caption>PINs (4 digits)</Caption>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -376,7 +397,9 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
           borderRadius: 6,
           borderLeft: `3px solid ${accent}`,
         }}>
-          {isRestart
+          {isEdit
+            ? 'Changes save right away and your check-ins are kept. Lowering a habit\'s day makes it appear sooner; raising it hides it until that day.'
+            : isRestart
             ? 'This wipes all check-ins and restarts the challenge from your start date. Your PINs stay the same. This can\'t be undone.'
             : "Once you start, habits can't be edited. Choose carefully!"}
         </div>
@@ -412,11 +435,13 @@ export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'se
               gap: 8,
             }}
           >
-            {isRestart
+            {isEdit
+              ? (submitting ? 'Saving...' : 'Save changes →')
+              : isRestart
               ? (submitting ? 'Restarting...' : 'Restart & wipe check-ins →')
               : (submitting ? 'Setting up...' : 'Lock in & start →')}
           </button>
-          {isRestart && onCancel && (
+          {isSchedule && onCancel && (
             <button
               onClick={onCancel}
               disabled={submitting}

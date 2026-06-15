@@ -28,6 +28,18 @@ export async function reconfigureChallenge(payload) {
   return res.json();
 }
 
+// Edit the habit schedule (names, reveal days, dates) WITHOUT touching any
+// existing check-ins.
+export async function editConfig(payload) {
+  const res = await fetch(BASE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'edit-config', payload }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function saveCheckin(userId, date, habitId, done, value) {
   const res = await fetch(BASE, {
     method: 'POST',

@@ -14,7 +14,7 @@ const TABS = [
   { id: 'race',     label: `vs`,       icon: '◆' },
 ];
 
-export default function TabbedApp({ appData, userId, onMutate, onLogout, onRestart, onRefresh, lastSync, isMobile }) {
+export default function TabbedApp({ appData, userId, onMutate, onLogout, onRestart, onEdit, onRefresh, lastSync, isMobile }) {
   const [activeTab, setActiveTab] = useState('notebook');
   const [syncLabel, setSyncLabel] = useState('just now');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -56,6 +56,7 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onResta
   };
   const cornerControls = (
     <div style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 8, zIndex: 5 }}>
+      <button onClick={onEdit} style={cornerBtn} title="Edit habits and reveal days (keeps check-ins)">edit</button>
       <button onClick={onRestart} style={cornerBtn} title="Wipe check-ins and restart the challenge">restart</button>
       <button onClick={onLogout} style={cornerBtn}>logout</button>
     </div>
@@ -163,6 +164,12 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onResta
                     style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '10px 14px', fontFamily: handFont, fontSize: 15, color: ink }}
                   >
                     ↻ Refresh
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); onEdit(); }}
+                    style={{ background: 'none', border: 'none', borderTop: `1px solid ${inkFaint}`, cursor: 'pointer', textAlign: 'left', padding: '10px 14px', fontFamily: handFont, fontSize: 15, color: ink }}
+                  >
+                    ✎ Edit habits
                   </button>
                   <button
                     onClick={() => { setMenuOpen(false); onRestart(); }}
@@ -309,12 +316,24 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onResta
             <Avatar letter={config.users[userId]?.initial || '?'} color={userColor} size={34} />
             <Avatar letter={config.users[friendId]?.initial || '?'} color={friendColor} size={34} />
             <button
-              onClick={onRestart}
+              onClick={onEdit}
               style={{
                 background: 'none', border: `1px solid ${inkFaint}`,
                 borderRadius: 4, cursor: 'pointer',
                 fontFamily: handFont, fontSize: 12, color: inkSoft,
                 padding: '3px 8px', marginLeft: 4,
+              }}
+              title="Edit habits and reveal days (keeps check-ins)"
+            >
+              edit
+            </button>
+            <button
+              onClick={onRestart}
+              style={{
+                background: 'none', border: `1px solid ${inkFaint}`,
+                borderRadius: 4, cursor: 'pointer',
+                fontFamily: handFont, fontSize: 12, color: inkSoft,
+                padding: '3px 8px',
               }}
               title="Wipe check-ins and restart the challenge"
             >
