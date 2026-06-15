@@ -14,9 +14,10 @@ const TABS = [
   { id: 'race',     label: `vs`,       icon: '◆' },
 ];
 
-export default function TabbedApp({ appData, userId, onMutate, onLogout, onRefresh, lastSync, isMobile }) {
+export default function TabbedApp({ appData, userId, onMutate, onLogout, onRestart, onRefresh, lastSync, isMobile }) {
   const [activeTab, setActiveTab] = useState('notebook');
   const [syncLabel, setSyncLabel] = useState('just now');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const { config, checkins = {} } = appData || {};
   const dayNum = config ? getDayNum(config.startDate) : 0;
@@ -121,6 +122,45 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onRefre
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <Avatar letter={config.users[userId]?.initial || '?'} color={userColor} size={26} />
               <Avatar letter={config.users[friendId]?.initial || '?'} color={friendColor} size={26} />
+            </div>
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setMenuOpen(o => !o)}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 20, lineHeight: 1, color: inkSoft, padding: '2px 4px',
+                }}
+                aria-label="Menu"
+              >
+                ⋯
+              </button>
+              {menuOpen && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 6, zIndex: 20,
+                  background: paper, border: `1px solid ${inkFaint}`, borderRadius: 8,
+                  boxShadow: '0 4px 16px rgba(31,26,20,0.12)',
+                  display: 'flex', flexDirection: 'column', minWidth: 140, overflow: 'hidden',
+                }}>
+                  <button
+                    onClick={() => { setMenuOpen(false); onRefresh(); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '10px 14px', fontFamily: handFont, fontSize: 15, color: ink }}
+                  >
+                    ↻ Refresh
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); onRestart(); }}
+                    style={{ background: 'none', border: 'none', borderTop: `1px solid ${inkFaint}`, cursor: 'pointer', textAlign: 'left', padding: '10px 14px', fontFamily: handFont, fontSize: 15, color: ink }}
+                  >
+                    ⟲ Restart challenge
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); onLogout(); }}
+                    style={{ background: 'none', border: 'none', borderTop: `1px solid ${inkFaint}`, cursor: 'pointer', textAlign: 'left', padding: '10px 14px', fontFamily: handFont, fontSize: 15, color: inkSoft }}
+                  >
+                    ⏻ Logout
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -252,12 +292,24 @@ export default function TabbedApp({ appData, userId, onMutate, onLogout, onRefre
             <Avatar letter={config.users[userId]?.initial || '?'} color={userColor} size={34} />
             <Avatar letter={config.users[friendId]?.initial || '?'} color={friendColor} size={34} />
             <button
-              onClick={onLogout}
+              onClick={onRestart}
               style={{
                 background: 'none', border: `1px solid ${inkFaint}`,
                 borderRadius: 4, cursor: 'pointer',
                 fontFamily: handFont, fontSize: 12, color: inkSoft,
                 padding: '3px 8px', marginLeft: 4,
+              }}
+              title="Wipe check-ins and restart the challenge"
+            >
+              restart
+            </button>
+            <button
+              onClick={onLogout}
+              style={{
+                background: 'none', border: `1px solid ${inkFaint}`,
+                borderRadius: 4, cursor: 'pointer',
+                fontFamily: handFont, fontSize: 12, color: inkSoft,
+                padding: '3px 8px',
               }}
             >
               logout

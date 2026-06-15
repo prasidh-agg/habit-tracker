@@ -75,6 +75,27 @@ export default async function handler(req, context) {
       return Response.json({ success: true }, { headers });
     }
 
+    if (action === 'reconfigure') {
+      // Restart the challenge: preserve existing users (and their hashed
+      // PINs), replace the habit schedule + dates, and wipe all check-ins.
+      if (!current.config) {
+        return Response.json({ error: 'Nothing to reconfigure' }, { status: 400, headers });
+      }
+      const { config } = body.payload;
+      const newData = {
+        config: {
+          ...current.config,
+          startDate: config.startDate,
+          rampDays: config.rampDays,
+          practiceDays: config.practiceDays,
+          habits: config.habits,
+        },
+        checkins: {},
+      };
+      await store.set(KEY, JSON.stringify(newData));
+      return Response.json({ success: true }, { headers });
+    }
+
     if (action === 'reset') {
       // Dev-only reset
       await store.set(KEY, JSON.stringify({ config: null, checkins: {} }));
