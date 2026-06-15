@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { setupChallenge } from '../lib/api.js';
+import { setupChallenge, reconfigureChallenge } from '../lib/api.js';
 import { bg, paper, paperShade, ink, inkSoft, inkFaint, accent, accentSoft, handFont, titleFont, monoFont } from '../constants.js';
 import { SketchBox, Paper, Caption } from './primitives.jsx';
 import { todayStr } from '../lib/utils.js';
@@ -22,11 +22,29 @@ const DEFAULT_HABITS = [
   { id: 'h15', revealDay: 15, name: '',                  type: 'check', target: null,  unit: ''      },
 ];
 
-export default function SetupScreen({ onComplete, isMobile }) {
-  const [habits, setHabits] = useState(DEFAULT_HABITS.map(h => ({ ...h })));
+// Restart pre-fill: keep the existing habits, but shift the reveal schedule so
+// every habit already unlocked (revealDay <= currentDay) lands on Day 1, and the
+// rest keep unlocking one day at a time after that.
+function restartHabits(config, currentDay) {
+  const day = Math.max(1, currentDay || 1);
+  return (config?.habits || []).map(h => ({
+    id: h.id,
+    revealDay: Math.max(1, (h.revealDay || 1) - day + 1),
+    name: h.name || '',
+    type: h.type || 'check',
+    target: h.target ?? null,
+    unit: h.unit || '',
+  }));
+}
+
+export default function SetupScreen({ onComplete, onCancel, isMobile, mode = 'setup', initialConfig = null, currentDay = 1 }) {
+  const isRestart = mode === 'restart';
+  const [habits, setHabits] = useState(() =>
+    isRestart ? restartHabits(initialConfig, currentDay) : DEFAULT_HABITS.map(h => ({ ...h }))
+  );
   const [startDate, setStartDate] = useState(todayStr());
-  const [rampDays, setRampDays] = useState(15);
-  const [practiceDays, setPracticeDays] = useState(15);
+  const [rampDays, setRampDays] = useState(isRestart ? (initialConfig?.rampDays || 15) : 15);
+  const [practiceDays, setPracticeDays] = useState(isRestart ? (initialConfig?.practiceDays || 15) : 15);
   const [prasPin, setPrasPin] = useState('');
   const [aniPin, setAniPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -46,33 +64,47 @@ export default function SetupScreen({ onComplete, isMobile }) {
 
   const handleSubmit = async () => {
     if (!startDate) { setErr('Please set a start date.'); return; }
-    if (prasPin.length !== 4 || !/^\d{4}$/.test(prasPin)) { setErr("Prasidh's PIN must be 4 digits."); return; }
-    if (aniPin.length !== 4 || !/^\d{4}$/.test(aniPin)) { setErr("Anisha's PIN must be 4 digits."); return; }
+    if (!isRestart) {
+      if (prasPin.length !== 4 || !/^\d{4}$/.test(prasPin)) { setErr("Prasidh's PIN must be 4 digits."); return; }
+      if (aniPin.length !== 4 || !/^\d{4}$/.test(aniPin)) { setErr("Anisha's PIN must be 4 digits."); return; }
+    }
     const filledHabits = habits.filter(h => h.name.trim());
     if (filledHabits.length === 0) { setErr('Add at least one habit.'); return; }
 
     setSubmitting(true);
     setErr('');
     try {
-      await setupChallenge({
-        config: {
-          startDate,
-          rampDays: Number(rampDays),
-          practiceDays: Number(practiceDays),
-          users: {
-            prasidh: { name: 'Prasidh', initial: 'P', pin: prasPin },
-            anisha:  { name: 'Anisha',  initial: 'A', pin: aniPin  },
+      const habitPayload = filledHabits.map((h, i) => ({
+        id: h.id || `h${i + 1}`,
+        revealDay: Number(h.revealDay) || i + 1,
+        name: h.name.trim(),
+        type: h.type,
+        target: h.type === 'num' ? Number(h.target) : null,
+        unit: h.type === 'num' ? h.unit : '',
+      }));
+      if (isRestart) {
+        await reconfigureChallenge({
+          config: {
+            startDate,
+            rampDays: Number(rampDays),
+            practiceDays: Number(practiceDays),
+            habits: habitPayload,
           },
-          habits: filledHabits.map((h, i) => ({
-            id: h.id || `h${i + 1}`,
-            revealDay: h.revealDay || i + 1,
-            name: h.name.trim(),
-            type: h.type,
-            target: h.type === 'num' ? Number(h.target) : null,
-            unit: h.type === 'num' ? h.unit : '',
-          })),
-        },
-      });
+        });
+      } else {
+        await setupChallenge({
+          config: {
+            startDate,
+            rampDays: Number(rampDays),
+            practiceDays: Number(practiceDays),
+            users: {
+              prasidh: { name: 'Prasidh', initial: 'P', pin: prasPin },
+              anisha:  { name: 'Anisha',  initial: 'A', pin: aniPin  },
+            },
+            habits: habitPayload,
+          },
+        });
+      }
       onComplete();
     } catch (e) {
       setErr(e.message || 'Something went wrong. Try again.');
@@ -110,16 +142,20 @@ export default function SetupScreen({ onComplete, isMobile }) {
         {/* Title */}
         <div style={{ marginBottom: 32, textAlign: isMobile ? 'center' : 'left' }}>
           <div style={{ fontFamily: titleFont, fontSize: isMobile ? 52 : 64, color: ink, lineHeight: 1, marginBottom: 4 }}>
-            The 15
+            {isRestart ? 'Restart' : 'The 15'}
           </div>
           <div style={{ fontFamily: handFont, fontSize: 16, color: inkSoft }}>
-            Set up your 30-day challenge together
+            {isRestart
+              ? 'Wipe check-ins and restart the challenge from today'
+              : 'Set up your 30-day challenge together'}
           </div>
         </div>
 
         {/* Habits table */}
         <SketchBox style={{ marginBottom: 32 }}>
-          <Caption style={{ marginBottom: 12 }}>Your 15 habits (one unlocks each day)</Caption>
+          <Caption style={{ marginBottom: 12 }}>
+            {isRestart ? 'Habits & reveal day (Day = day it unlocks; 1 = today)' : 'Your 15 habits (one unlocks each day)'}
+          </Caption>
 
           {/* Header */}
           {!isMobile && (
@@ -149,10 +185,26 @@ export default function SetupScreen({ onComplete, isMobile }) {
               padding: '6px 0',
               borderBottom: i < habits.length - 1 ? `1px solid ${inkFaint}` : 'none',
             }}>
-              {/* Day number */}
-              <span style={{ fontFamily: monoFont, fontSize: 12, color: inkSoft, textAlign: 'center' }}>
-                {i + 1}
-              </span>
+              {/* Day number — editable reveal day in restart mode */}
+              {isRestart ? (
+                <input
+                  type="number"
+                  min={1}
+                  value={h.revealDay}
+                  onChange={e => updateHabit(i, 'revealDay', e.target.value)}
+                  title="Reveal day"
+                  style={{
+                    width: '100%', textAlign: 'center',
+                    background: 'transparent', border: `1px solid ${inkFaint}`,
+                    borderRadius: 4, outline: 'none',
+                    fontFamily: monoFont, fontSize: 12, color: ink, padding: '2px 0',
+                  }}
+                />
+              ) : (
+                <span style={{ fontFamily: monoFont, fontSize: 12, color: inkSoft, textAlign: 'center' }}>
+                  {i + 1}
+                </span>
+              )}
 
               {/* Name */}
               <input
@@ -244,7 +296,7 @@ export default function SetupScreen({ onComplete, isMobile }) {
         {/* Config */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gridTemplateColumns: isMobile || isRestart ? '1fr' : '1fr 1fr',
           gap: 16,
           marginBottom: 32,
         }}>
@@ -283,6 +335,7 @@ export default function SetupScreen({ onComplete, isMobile }) {
             </div>
           </SketchBox>
 
+          {!isRestart && (
           <SketchBox>
             <Caption>PINs (4 digits)</Caption>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -312,6 +365,7 @@ export default function SetupScreen({ onComplete, isMobile }) {
               </label>
             </div>
           </SketchBox>
+          )}
         </div>
 
         {/* Warning */}
@@ -323,7 +377,9 @@ export default function SetupScreen({ onComplete, isMobile }) {
           borderRadius: 6,
           borderLeft: `3px solid ${accent}`,
         }}>
-          Once you start, habits can't be edited. Choose carefully!
+          {isRestart
+            ? 'This wipes all check-ins and restarts the challenge from your start date. Your PINs stay the same. This can\'t be undone.'
+            : "Once you start, habits can't be edited. Choose carefully!"}
         </div>
 
         {/* Error */}
@@ -337,27 +393,49 @@ export default function SetupScreen({ onComplete, isMobile }) {
         )}
 
         {/* Submit */}
-        <button
-          onClick={handleSubmit}
-          disabled={submitting}
-          style={{
-            padding: '14px 36px',
-            background: submitting ? inkSoft : ink,
-            color: paper,
-            border: 'none',
-            borderRadius: 8,
-            fontFamily: titleFont,
-            fontSize: 22,
-            cursor: submitting ? 'not-allowed' : 'pointer',
-            letterSpacing: '0.02em',
-            transition: 'all 0.15s',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-          }}
-        >
-          {submitting ? 'Setting up...' : 'Lock in & start →'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            style={{
+              padding: '14px 36px',
+              background: submitting ? inkSoft : ink,
+              color: paper,
+              border: 'none',
+              borderRadius: 8,
+              fontFamily: titleFont,
+              fontSize: 22,
+              cursor: submitting ? 'not-allowed' : 'pointer',
+              letterSpacing: '0.02em',
+              transition: 'all 0.15s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            {isRestart
+              ? (submitting ? 'Restarting...' : 'Restart & wipe check-ins →')
+              : (submitting ? 'Setting up...' : 'Lock in & start →')}
+          </button>
+          {isRestart && onCancel && (
+            <button
+              onClick={onCancel}
+              disabled={submitting}
+              style={{
+                padding: '14px 28px',
+                background: 'transparent',
+                color: inkSoft,
+                border: `1px solid ${inkFaint}`,
+                borderRadius: 8,
+                fontFamily: titleFont,
+                fontSize: 20,
+                cursor: submitting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
 
       </Paper>
     </div>

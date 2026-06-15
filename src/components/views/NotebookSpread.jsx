@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getDayNum, todayStr, formatDate, addDays } from '../../lib/utils.js';
+import { formatDate, addDays } from '../../lib/utils.js';
 import { paper, paperShade, ink, inkSoft, inkFaint, accent, accentSoft, handFont, titleFont, monoFont } from '../../constants.js';
 import { Check, Paper } from '../primitives.jsx';
 
@@ -157,48 +157,107 @@ function MiniCheck({ done }) {
   );
 }
 
+function DayNav({ viewDay, dayNum, dateObj, isToday, onChange, isMobile }) {
+  const canPrev = viewDay > 1;
+  const canNext = viewDay < dayNum;
+  const arrow = (enabled) => ({
+    background: 'none', border: 'none',
+    fontSize: isMobile ? 26 : 30, lineHeight: 1,
+    color: enabled ? ink : inkFaint,
+    cursor: enabled ? 'pointer' : 'default',
+    padding: '0 6px', userSelect: 'none',
+  });
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 2 : 6 }}>
+      <button disabled={!canPrev} onClick={() => onChange(viewDay - 1)} style={arrow(canPrev)} aria-label="Previous day">‹</button>
+      <div style={{ textAlign: 'center', minWidth: isMobile ? 96 : 130 }}>
+        <div style={{ fontFamily: titleFont, fontSize: isMobile ? 34 : 44, color: ink, lineHeight: 1 }}>
+          Day {viewDay}
+        </div>
+        <div style={{ fontFamily: handFont, fontSize: 13, color: isToday ? inkSoft : accent, marginTop: 2 }}>
+          {dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+          {!isToday && ' · past'}
+        </div>
+      </div>
+      <button disabled={!canNext} onClick={() => onChange(viewDay + 1)} style={arrow(canNext)} aria-label="Next day">›</button>
+      {!isToday && (
+        <button
+          onClick={() => onChange(dayNum)}
+          style={{
+            marginLeft: isMobile ? 2 : 6,
+            background: 'transparent', border: `1px solid ${inkFaint}`,
+            borderRadius: 999, cursor: 'pointer',
+            fontFamily: handFont, fontSize: 12, color: inkSoft,
+            padding: '2px 10px', whiteSpace: 'nowrap',
+          }}
+        >
+          today →
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function NotebookSpread({ appData, userId, friendId, dayNum, totalDays, onMutate, isMobile }) {
   const { config, checkins = {} } = appData;
-  const today = todayStr();
   const rampDays = config.rampDays || 15;
 
-  // Active habits for today
+  // Which day is currently being viewed/edited. Defaults to today; the user
+  // can navigate back to any past day to fix a missed/wrong check-in.
+  const [selectedDay, setSelectedDay] = useState(dayNum);
+  const viewDay = Math.min(Math.max(selectedDay, 1), dayNum);
+  const isToday = viewDay === dayNum;
+  const viewDate = formatDate(addDays(config.startDate, viewDay - 1));
+  const viewDateObj = addDays(config.startDate, viewDay - 1);
+
+  // Active habits for the viewed day
   const activeHabits = config.habits.filter(h => {
-    if (dayNum <= rampDays) return h.revealDay <= dayNum;
+    if (viewDay <= rampDays) return h.revealDay <= viewDay;
     return true;
   });
 
-  const userCheckins = checkins[today]?.[userId] || {};
-  const friendCheckins = checkins[today]?.[friendId] || {};
+  const userCheckins = checkins[viewDate]?.[userId] || {};
+  const friendCheckins = checkins[viewDate]?.[friendId] || {};
 
   const handleToggle = (habitId, done, value) => {
     const nextCheckins = {
       ...checkins,
-      [today]: {
-        ...checkins[today],
+      [viewDate]: {
+        ...checkins[viewDate],
         [userId]: {
           ...userCheckins,
           [habitId]: { done, ...(value !== undefined ? { value } : {}) },
         },
       },
     };
-    onMutate({ ...appData, checkins: nextCheckins }, habitId, done, value);
+    onMutate({ ...appData, checkins: nextCheckins }, habitId, done, value, viewDate);
   };
 
   const handleValueChange = (habitId, value) => {
     const current = userCheckins[habitId] || {};
     const nextCheckins = {
       ...checkins,
-      [today]: {
-        ...checkins[today],
+      [viewDate]: {
+        ...checkins[viewDate],
         [userId]: {
           ...userCheckins,
           [habitId]: { ...current, done: current.done || value > 0, value },
         },
       },
     };
-    onMutate({ ...appData, checkins: nextCheckins }, habitId, current.done || value > 0, value);
+    onMutate({ ...appData, checkins: nextCheckins }, habitId, current.done || value > 0, value, viewDate);
   };
+
+  const dayNav = (
+    <DayNav
+      viewDay={viewDay}
+      dayNum={dayNum}
+      dateObj={viewDateObj}
+      isToday={isToday}
+      onChange={setSelectedDay}
+      isMobile={isMobile}
+    />
+  );
 
   const userName = config.users[userId]?.name || 'You';
   const friendName = config.users[friendId]?.name || 'Friend';
@@ -213,16 +272,11 @@ export default function NotebookSpread({ appData, userId, friendId, dayNum, tota
     return (
       <Paper style={{ height: '100%', overflowY: 'auto', padding: '16px 16px 80px' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div>
-            <div style={{ fontFamily: titleFont, fontSize: 34, color: ink, lineHeight: 1 }}>
-              Day {dayNum}
-            </div>
-            <div style={{ fontFamily: handFont, fontSize: 13, color: inkSoft, marginTop: 2 }}>
-              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-            </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            {dayNav}
           </div>
-          <div style={{ fontFamily: handFont, fontSize: 12, color: inkSoft, textAlign: 'right', paddingTop: 4 }}>
+          <div style={{ fontFamily: handFont, fontSize: 12, color: inkSoft, textAlign: 'center', marginTop: 6 }}>
             {fmtD(startD)} — {fmtD(endD)}
           </div>
         </div>
@@ -272,9 +326,7 @@ export default function NotebookSpread({ appData, userId, friendId, dayNum, tota
     <Paper style={{ height: '100%', overflowY: 'auto', padding: '24px 32px 40px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 20 }}>
-        <div style={{ fontFamily: titleFont, fontSize: 44, color: ink, lineHeight: 1 }}>
-          Day {dayNum}
-        </div>
+        {dayNav}
         <div style={{ fontFamily: handFont, fontSize: 14, color: inkSoft, paddingBottom: 4 }}>
           {fmtD(startD)} — {fmtD(endD)}
         </div>

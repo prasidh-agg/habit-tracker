@@ -131,15 +131,33 @@ export default function App() {
     setState('auth');
   }, []);
 
-  const mutate = useCallback(async (optimisticData, habitId, done, value) => {
+  const mutate = useCallback(async (optimisticData, habitId, done, value, date) => {
     setAppData(optimisticData);
-    const today = todayStr();
+    const target = date || todayStr();
     try {
-      await saveCheckin(userId, today, habitId, done, value);
+      await saveCheckin(userId, target, habitId, done, value);
     } catch (err) {
       // silently fail, data will sync on next poll
     }
   }, [userId]);
+
+  const handleRestart = useCallback(() => {
+    setState('restart');
+  }, []);
+
+  const handleRestartComplete = useCallback(async () => {
+    const data = await loadData();
+    const newDay = data?.config ? getDayNum(data.config.startDate) : 1;
+    // Mark the new Day 1 as already "revealed" for everyone on this device, so
+    // the carried-over habits don't trigger a one-habit reveal ceremony — but
+    // habits unlocking on later days still animate as normal.
+    if (data?.config?.users) {
+      for (const uid of Object.keys(data.config.users)) {
+        localStorage.setItem(`habit-revealed-${uid}`, String(newDay));
+      }
+    }
+    determineState(data, userId);
+  }, [loadData, determineState, userId]);
 
   const refreshData = useCallback(async () => {
     const data = await loadData();
@@ -192,6 +210,19 @@ export default function App() {
     return <SetupScreen onComplete={handleSetupComplete} isMobile={isMobile} />;
   }
 
+  if (state === 'restart') {
+    return (
+      <SetupScreen
+        mode="restart"
+        initialConfig={appData?.config}
+        currentDay={appData?.config ? getDayNum(appData.config.startDate) : 1}
+        onComplete={handleRestartComplete}
+        onCancel={() => setState('app')}
+        isMobile={isMobile}
+      />
+    );
+  }
+
   if (state === 'auth') {
     return (
       <PinGate
@@ -220,6 +251,7 @@ export default function App() {
         userId={userId}
         onMutate={mutate}
         onLogout={handleLogout}
+        onRestart={handleRestart}
         onRefresh={refreshData}
         lastSync={lastSync}
         isMobile={isMobile}
