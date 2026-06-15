@@ -177,6 +177,21 @@ export default function App() {
     setState('restart');
   }, []);
 
+  const handleEdit = useCallback(() => {
+    setState('edit');
+  }, []);
+
+  const handleEditComplete = useCallback((configObj) => {
+    // Non-destructive: merge the edited schedule into the existing data and
+    // keep all check-ins. Then reconcile with the server.
+    setAppData(prev => {
+      const newConfig = configObj ? { ...prev?.config, ...configObj } : prev?.config;
+      return { ...prev, config: newConfig };
+    });
+    setState('app');
+    loadData(true);
+  }, [loadData]);
+
   const handleRestartComplete = useCallback(async (configObj) => {
     // Any optimistic edits from the previous challenge are now irrelevant.
     pendingRef.current = {};
@@ -264,6 +279,18 @@ export default function App() {
     );
   }
 
+  if (state === 'edit') {
+    return (
+      <SetupScreen
+        mode="edit"
+        initialConfig={appData?.config}
+        onComplete={handleEditComplete}
+        onCancel={() => setState('app')}
+        isMobile={isMobile}
+      />
+    );
+  }
+
   if (state === 'auth') {
     return (
       <PinGate
@@ -293,6 +320,7 @@ export default function App() {
         onMutate={mutate}
         onLogout={handleLogout}
         onRestart={handleRestart}
+        onEdit={handleEdit}
         onRefresh={refreshData}
         lastSync={lastSync}
         isMobile={isMobile}
